@@ -1,0 +1,72 @@
+name: Notify New Song
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - songs.json
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Find new songs and send notification
+        env:
+          BUTTONDOWN_API_KEY: ${{ secrets.BUTTONDOWN_API_KEY }}
+        run: |
+          git show HEAD~1:songs.json > old_songs.json 2>/dev/null || echo '[]' > old_songs.json
+          git show HEAD:songs.json > new_songs.json
+
+          python3 << 'PYEOF'
+          import json, os, urllib.request, urllib.error
+
+          old = json.load(open('old_songs.json'))
+          new = json.load(open('new_songs.json'))
+
+          old_titles = {s['title'] for s in old}
+          added = [s['title'] for s in new if s['title'] not in old_titles]
+
+          if not added:
+              print('No new songs detected — skipping notification.')
+              exit(0)
+
+          api_key = os.environ.get('BUTTONDOWN_API_KEY', '')
+          if not api_key:
+              print('BUTTONDOWN_API_KEY secret not set — skipping notification.')
+              exit(0)
+
+          if len(added) == 1:
+              subject = 'Ben has released a new recording!'
+              body = f'Ben has released "{added[0]}"'
+          else:
+              subject = f'Ben has released {len(added)} new recordings!'
+              song_list = '\n'.join(f'- {t}' for t in added)
+              body = f'Ben has released the following new recordings:\n\n{song_list}'
+
+          payload = json.dumps({
+              'subject': subject,
+              'body': body,
+              'status': 'about_to_send'
+          }).encode()
+
+          req = urllib.request.Request(
+              'https://api.buttondown.email/v1/emails',
+              data=payload,
+              headers={
+                  'Authorization': f'Token {api_key}',
+                  'Content-Type': 'application/json'
+              }
+          )
+
+          try:
+              with urllib.request.urlopen(req) as resp:
+                  print(f'Notification sent for: {added}')
+          except urllib.error.HTTPError as e:
+              print(f'Error sending notification: {e.read().decode()}')
+              exit(1)
+          PYEOF

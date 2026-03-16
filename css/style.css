@@ -200,7 +200,7 @@ body {
   flex-shrink: 0;
   background: none;
   border: none;
-  font-size: clamp(0.9rem, 1.8vw, 1.4rem);
+  font-size: clamp(2.7rem, 5.4vw, 4.2rem);
   color: #666;
   cursor: pointer;
   padding: 0 2px;
@@ -321,4 +321,48 @@ body {
   color: #444;
   font-style: italic;
   font-size: 0.88rem;
+}
+
+/* ── Email signup form ── */
+.email-row {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+#email-form input[type="email"] {
+  padding: 10px 16px;
+  background: #111;
+  color: #ddd;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  font-size: 0.92rem;
+  font-family: inherit;
+  width: 280px;
+  max-width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+#email-form input[type="email"]:focus {
+  border-color: #666;
+}
+
+#email-form button[type="submit"] {
+  padding: 10px 22px;
+  background: #1e1e1e;
+  color: #ddd;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  font-size: 0.92rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+#email-form button[type="submit"]:hover {
+  background: #2e2e2e;
+  color: #fff;
+  border-color: #888;
 }

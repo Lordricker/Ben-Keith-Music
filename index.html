@@ -38,10 +38,18 @@
     <section id="signup-section">
       <h2>Stay Updated</h2>
       <p>Enter your email to be notified when new recordings are added.</p>
-      <!-- Paste your Mailchimp or Buttondown embed code below this comment -->
-      <div id="email-embed">
-        <p class="placeholder-note">[Email signup form — paste your Mailchimp or Buttondown embed code here]</p>
-      </div>
+      <form
+        id="email-form"
+        action="https://buttondown.com/api/emails/embed-subscribe/lordricker"
+        method="post"
+        target="popupwindow"
+        onsubmit="window.open('https://buttondown.com/lordricker','popupwindow')"
+      >
+        <div class="email-row">
+          <input type="email" name="email" placeholder="Your email address" required />
+          <button type="submit">Subscribe</button>
+        </div>
+      </form>
     </section>
 
   </div>
