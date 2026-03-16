@@ -302,7 +302,7 @@
     audioEl.addEventListener('ended', () => {
       playBtn.textContent = '\u25B6';
       progressInput.value = 0;
-      card.classList.remove('playing');
+      card.classList.remove('playing', 'open');
       currentCard = null;
       currentAudio = null;
       // Find the next card in the list and play it
