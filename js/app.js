@@ -2,7 +2,7 @@
   let songs = [];
   let sortKey = 'title';
   let sortAsc = true;
-  let activeCategory = 'all';
+  let activeCategories = new Set(['all']);
   let currentCard = null;
   let currentAudio = null;
   let favorites = new Set(JSON.parse(localStorage.getItem('bk-favorites') || '[]'));
@@ -23,7 +23,7 @@
 
   function updateCategoryButtons() {
     document.querySelectorAll('[data-cat]').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.cat === activeCategory);
+      btn.classList.toggle('active', activeCategories.has(btn.dataset.cat));
     });
   }
 
@@ -298,11 +298,20 @@
       }
     });
 
-    // Reset on song end
+    // Reset on song end — autoplay next
     audioEl.addEventListener('ended', () => {
       playBtn.textContent = '\u25B6';
       progressInput.value = 0;
       card.classList.remove('playing');
+      currentCard = null;
+      currentAudio = null;
+      // Find the next card in the list and play it
+      const cards = Array.from(document.querySelectorAll('.song-card'));
+      const idx = cards.indexOf(card);
+      if (idx !== -1 && idx + 1 < cards.length) {
+        const nextCard = cards[idx + 1];
+        nextCard.click();
+      }
     });
 
     return card;
@@ -314,11 +323,21 @@
     currentCard = null;
     currentAudio = null;
 
-    const pool = activeCategory === 'favorites'
-      ? songs.filter(s => favorites.has(s.filename))
-      : activeCategory === 'all'
-        ? songs
-        : songs.filter(s => parseCategories(s.filename).includes(activeCategory));
+    const pool = activeCategories.has('all')
+      ? songs
+      : activeCategories.has('favorites')
+        ? songs.filter(s => {
+            if (!favorites.has(s.filename)) return false;
+            // if other cats also selected, further filter
+            const nonSpecial = [...activeCategories].filter(c => c !== 'favorites');
+            if (nonSpecial.length === 0) return true;
+            const cats = parseCategories(s.filename);
+            return nonSpecial.some(c => cats.includes(c));
+          })
+        : songs.filter(s => {
+            const cats = parseCategories(s.filename);
+            return [...activeCategories].some(c => cats.includes(c));
+          });
 
     const sorted = [...pool].sort((a, b) => {
       const va = (a[sortKey] || '').toLowerCase();
@@ -365,7 +384,20 @@
 
   document.querySelectorAll('[data-cat]').forEach(btn => {
     btn.addEventListener('click', () => {
-      activeCategory = btn.dataset.cat;
+      const cat = btn.dataset.cat;
+      if (cat === 'all') {
+        // All clears everything else
+        activeCategories = new Set(['all']);
+      } else {
+        activeCategories.delete('all');
+        if (activeCategories.has(cat)) {
+          activeCategories.delete(cat);
+          // If nothing left, fall back to All
+          if (activeCategories.size === 0) activeCategories.add('all');
+        } else {
+          activeCategories.add(cat);
+        }
+      }
       updateCategoryButtons();
       renderSongs();
     });
