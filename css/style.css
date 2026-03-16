@@ -86,35 +86,85 @@ body {
 
 /* ── Song card ── */
 .song-card {
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.song-button {
-  width: 100%;
-  height: clamp(72px, 9vw, 150px);
+  position: relative;
   background-image: url('../Greybubblebuttonstretch.png');
   background-size: 100% 100%;
   background-repeat: no-repeat;
-  border: none;
+  background-color: transparent;
+  border-radius: 10px;
+  height: clamp(72px, 9vw, 150px);
+  cursor: pointer;
+  transition: height 0.3s ease;
+}
+
+.song-card audio {
+  display: none;
+}
+
+.song-card.open {
+  height: clamp(200px, 22vw, 260px);
+}
+
+/* ── Player controls (top overlay) ── */
+.song-controls {
+  position: absolute;
+  top: 14px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.song-card.open .song-controls {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.play-pause-btn {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #555;
+  background: rgba(0, 0, 0, 0.18);
+  color: #222;
+  font-size: 0.8rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 32px;
-  transition: filter 0.18s;
+  padding: 0;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
 }
 
-.song-button:hover {
-  filter: brightness(1.1);
+.play-pause-btn:hover {
+  background: rgba(0, 0, 0, 0.32);
+  border-color: #222;
 }
 
-.song-button:focus-visible {
-  outline: 2px solid #88aaff;
-  outline-offset: -2px;
+.progress-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
 }
 
+.progress-input {
+  width: 100%;
+  cursor: pointer;
+  accent-color: #555;
+}
+
+/* ── Song title ── */
 .song-title {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   font-family: 'Recharge', sans-serif;
   font-size: clamp(1rem, 2.5vw, 2rem);
   color: #1a1a1a;
@@ -124,75 +174,75 @@ body {
   letter-spacing: 0.04em;
   pointer-events: none;
   user-select: none;
+  white-space: nowrap;
+  max-width: calc(100% - 48px);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* ── Detail panel ── */
-.song-detail {
-  display: none;
-  background: #0d0d0d;
-  border: 1px solid #2a2a2a;
-  border-top: none;
-  border-radius: 0 0 10px 10px;
-  padding: 22px 28px;
-}
-
-.song-detail.open {
-  display: block;
-}
-
-.song-meta {
+/* ── Download buttons (bottom overlay) ── */
+.song-downloads {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 34px;
   display: flex;
   flex-wrap: wrap;
-  gap: 18px;
-  margin-bottom: 16px;
-  font-size: 0.82rem;
-  color: #777;
+  gap: 8px;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
 }
 
-.song-description {
-  color: #999;
-  font-style: italic;
+.song-card.open .song-downloads {
+  opacity: 1;
+  pointer-events: all;
 }
 
-audio {
-  width: 100%;
-  margin-bottom: 14px;
-  border-radius: 6px;
-  accent-color: #888;
+/* ── Song date (bottom-left) ── */
+.song-date {
+  position: absolute;
+  bottom: 12px;
+  left: 24px;
+  font-size: 0.72rem;
+  color: #555;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s 0.1s;
 }
 
-.download-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.song-card.open .song-date {
+  opacity: 1;
 }
 
 .download-btn {
   display: inline-block;
-  padding: 7px 18px;
-  background: #1a1a1a;
-  color: #bbb;
-  border: 1px solid #3a3a3a;
+  padding: 5px 14px;
+  background: rgba(0, 0, 0, 0.12);
+  color: #333;
+  border: 1px solid #888;
   border-radius: 6px;
   text-decoration: none;
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-family: inherit;
   transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
 }
 
 .download-btn:hover {
-  background: #2a2a2a;
-  color: #fff;
+  background: rgba(0, 0, 0, 0.28);
+  color: #111;
 }
 
 .download-btn.mp3 {
-  border-color: #2e6e50;
-  color: #5cb89a;
+  border-color: #4a8e68;
+  color: #2a6048;
 }
 
 .download-btn.mp3:hover {
-  background: #152e22;
-  color: #7dd4b5;
+  background: rgba(30, 90, 55, 0.15);
+  color: #1a4030;
 }
 
 /* ── Email signup ── */
