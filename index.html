@@ -14,9 +14,21 @@
     </header>
 
     <div id="sort-controls">
-      <span class="sort-label">Sort by:</span>
-      <button class="sort-btn active" data-sort="title">Title</button>
-      <button class="sort-btn" data-sort="date">Date</button>
+      <div class="sort-group">
+        <span class="sort-label">Sort by:</span>
+        <button class="sort-btn active" data-sort="title">Title</button>
+        <button class="sort-btn" data-sort="date">Date</button>
+      </div>
+      <div class="category-group">
+        <span class="sort-label">Filter:</span>
+        <button class="sort-btn cat-btn active" data-cat="all">All</button>
+        <button class="sort-btn cat-btn" data-cat="V">Vocal</button>
+        <button class="sort-btn cat-btn" data-cat="L">Cello</button>
+        <button class="sort-btn cat-btn" data-cat="C">Christmas</button>
+        <button class="sort-btn cat-btn" data-cat="G">Game</button>
+        <button class="sort-btn cat-btn" data-cat="R">Church</button>
+        <button class="sort-btn cat-btn" data-cat="favorites">★ Favorites</button>
+      </div>
     </div>
 
     <div id="song-list">

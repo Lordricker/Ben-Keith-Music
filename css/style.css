@@ -42,8 +42,18 @@ body {
 #sort-controls {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 20px;
+}
+
+.sort-group,
+.category-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .sort-label {
@@ -160,11 +170,19 @@ body {
 }
 
 /* ── Song title ── */
-.song-title {
+.song-title-wrap {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 48px);
+  pointer-events: none;
+}
+
+.song-title {
   font-family: 'Recharge', sans-serif;
   font-size: clamp(1rem, 2.5vw, 2rem);
   color: #1a1a1a;
@@ -172,12 +190,33 @@ body {
   line-height: 1.2;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  pointer-events: none;
   user-select: none;
   white-space: nowrap;
-  max-width: calc(100% - 48px);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.star-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  font-size: clamp(0.9rem, 1.8vw, 1.4rem);
+  color: #666;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  pointer-events: all;
+  transition: color 0.15s, transform 0.1s;
+  user-select: none;
+}
+
+.star-btn:hover {
+  color: #bba020;
+  transform: scale(1.2);
+}
+
+.star-btn.starred {
+  color: #e6b800;
 }
 
 /* ── Download buttons (bottom overlay) ── */

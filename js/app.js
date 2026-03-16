@@ -2,16 +2,28 @@
   let songs = [];
   let sortKey = 'title';
   let sortAsc = true;
+  let activeCategory = 'all';
   let currentCard = null;
   let currentAudio = null;
+  let favorites = new Set(JSON.parse(localStorage.getItem('bk-favorites') || '[]'));
+
+  function saveFavorites() {
+    localStorage.setItem('bk-favorites', JSON.stringify([...favorites]));
+  }
 
   function updateSortButtons() {
-    document.querySelectorAll('.sort-btn').forEach(btn => {
+    document.querySelectorAll('[data-sort]').forEach(btn => {
       const key = btn.dataset.sort;
       const label = key.charAt(0).toUpperCase() + key.slice(1);
       const isActive = key === sortKey;
       btn.classList.toggle('active', isActive);
-      btn.textContent = isActive ? label + (sortAsc ? ' \u25b2' : ' \u25bc') : label;
+      btn.textContent = isActive ? label + (sortAsc ? ' ▲' : ' ▼') : label;
+    });
+  }
+
+  function updateCategoryButtons() {
+    document.querySelectorAll('[data-cat]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.cat === activeCategory);
     });
   }
 
@@ -26,6 +38,12 @@
     return new Date(y, m - 1, d).toLocaleDateString('en-US', {
       year: 'numeric', month: 'long', day: 'numeric'
     });
+  }
+
+  function parseCategories(filename) {
+    const match = filename.match(/\s*-\s*([A-Za-z]+)\.[^.]+$/);
+    if (!match) return [];
+    return match[1].toUpperCase().split('');
   }
 
   function stopCurrent() {
@@ -187,11 +205,38 @@
     controls.appendChild(progressWrap);
     card.appendChild(controls);
 
-    // ── CENTER: Title ──
+    // ── CENTER: Title + star ──
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'song-title-wrap';
+
     const titleSpan = document.createElement('span');
     titleSpan.className = 'song-title';
     titleSpan.textContent = song.title;
-    card.appendChild(titleSpan);
+
+    const starBtn = document.createElement('button');
+    starBtn.className = 'star-btn' + (favorites.has(song.filename) ? ' starred' : '');
+    starBtn.setAttribute('aria-label', 'Favorite');
+    starBtn.textContent = favorites.has(song.filename) ? '\u2605' : '\u2606';
+
+    titleWrap.appendChild(titleSpan);
+    titleWrap.appendChild(starBtn);
+    card.appendChild(titleWrap);
+
+    starBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (favorites.has(song.filename)) {
+        favorites.delete(song.filename);
+        starBtn.textContent = '\u2606';
+        starBtn.classList.remove('starred');
+      } else {
+        favorites.add(song.filename);
+        starBtn.textContent = '\u2605';
+        starBtn.classList.add('starred');
+      }
+      saveFavorites();
+      // If currently viewing favorites, re-render to remove un-favorited song
+      if (activeCategory === 'favorites') renderSongs();
+    });
 
     // ── BOTTOM: Downloads ──
     const dlLinks = document.createElement('div');
@@ -221,7 +266,7 @@
 
     // Clicking the card background/title toggles play
     card.addEventListener('click', (e) => {
-      if (e.target.closest('a, .play-pause-btn, .progress-input')) return;
+      if (e.target.closest('a, .play-pause-btn, .progress-input, .star-btn')) return;
       togglePlay(card, audioEl, playBtn, progressInput);
     });
 
@@ -279,7 +324,13 @@
     currentCard = null;
     currentAudio = null;
 
-    const sorted = [...songs].sort((a, b) => {
+    const pool = activeCategory === 'favorites'
+      ? songs.filter(s => favorites.has(s.filename))
+      : activeCategory === 'all'
+        ? songs
+        : songs.filter(s => parseCategories(s.filename).includes(activeCategory));
+
+    const sorted = [...pool].sort((a, b) => {
       const va = (a[sortKey] || '').toLowerCase();
       const vb = (b[sortKey] || '').toLowerCase();
       if (va < vb) return sortAsc ? -1 : 1;
@@ -290,7 +341,7 @@
     sorted.forEach(song => container.appendChild(buildCard(song)));
   }
 
-  document.querySelectorAll('.sort-btn').forEach(btn => {
+  document.querySelectorAll('[data-sort]').forEach(btn => {
     btn.addEventListener('click', () => {
       const key = btn.dataset.sort;
       if (sortKey === key) {
@@ -304,9 +355,18 @@
     });
   });
 
+  document.querySelectorAll('[data-cat]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeCategory = btn.dataset.cat;
+      updateCategoryButtons();
+      renderSongs();
+    });
+  });
+
   try {
     await loadSongs();
     updateSortButtons();
+    updateCategoryButtons();
     renderSongs();
   } catch (err) {
     console.error('Failed to load songs:', err);
