@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Recordings</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="page-wrapper">
+
+    <header id="site-header">
+      <h1 id="site-title">My Recordings</h1>
+    </header>
+
+    <div id="sort-controls">
+      <span class="sort-label">Sort by:</span>
+      <button class="sort-btn active" data-sort="title">Title</button>
+      <button class="sort-btn" data-sort="date">Date</button>
+    </div>
+
+    <div id="song-list">
+      <!-- Songs rendered by app.js -->
+    </div>
+
+    <section id="signup-section">
+      <h2>Stay Updated</h2>
+      <p>Enter your email to be notified when new recordings are added.</p>
+      <!-- Paste your Mailchimp or Buttondown embed code below this comment -->
+      <div id="email-embed">
+        <p class="placeholder-note">[Email signup form — paste your Mailchimp or Buttondown embed code here]</p>
+      </div>
+    </section>
+
+  </div>
+  <script src="js/app.js"></script>
+</body>
+</html>
