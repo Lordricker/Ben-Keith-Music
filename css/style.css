@@ -228,6 +228,14 @@ body {
   font-family: inherit;
   transition: background 0.15s, color 0.15s;
   white-space: nowrap;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.download-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .download-btn:hover {

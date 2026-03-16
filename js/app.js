@@ -71,6 +71,73 @@
     }
   }
 
+  function floatTo16BitPCM(float32Array) {
+    const out = new Int16Array(float32Array.length);
+    for (let i = 0; i < float32Array.length; i++) {
+      const s = Math.max(-1, Math.min(1, float32Array[i]));
+      out[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return out;
+  }
+
+  async function convertAndDownloadMp3(m4aPath, outFilename, btn) {
+    const original = btn.textContent;
+    btn.textContent = 'Converting…';
+    btn.disabled = true;
+    try {
+      const response = await fetch(m4aPath);
+      if (!response.ok) throw new Error('Could not fetch audio file');
+      const arrayBuffer = await response.arrayBuffer();
+
+      const audioCtx = new AudioContext();
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      audioCtx.close();
+
+      const channels = audioBuffer.numberOfChannels > 1 ? 2 : 1;
+      const sampleRate = audioBuffer.sampleRate;
+      const encoder = new lamejs.Mp3Encoder(channels, sampleRate, 128);
+      const blockSize = 1152;
+      const mp3Data = [];
+
+      if (channels === 1) {
+        const pcm = floatTo16BitPCM(audioBuffer.getChannelData(0));
+        for (let i = 0; i < pcm.length; i += blockSize) {
+          const buf = encoder.encodeBuffer(pcm.subarray(i, i + blockSize));
+          if (buf.length > 0) mp3Data.push(buf);
+        }
+      } else {
+        const leftPcm = floatTo16BitPCM(audioBuffer.getChannelData(0));
+        const rightPcm = floatTo16BitPCM(audioBuffer.getChannelData(1));
+        for (let i = 0; i < leftPcm.length; i += blockSize) {
+          const buf = encoder.encodeBuffer(
+            leftPcm.subarray(i, i + blockSize),
+            rightPcm.subarray(i, i + blockSize)
+          );
+          if (buf.length > 0) mp3Data.push(buf);
+        }
+      }
+
+      const tail = encoder.flush();
+      if (tail.length > 0) mp3Data.push(tail);
+
+      const blob = new Blob(mp3Data, { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = outFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      console.error('MP3 conversion failed:', err);
+      alert('MP3 conversion failed. Try downloading the M4A instead.');
+    } finally {
+      btn.textContent = original;
+      btn.disabled = false;
+    }
+  }
+
   function buildCard(song) {
     const card = document.createElement('div');
     card.className = 'song-card';
@@ -136,14 +203,12 @@
     m4aLink.download = '';
     m4aLink.textContent = '\u2193 Download M4A';
 
-    const mp3Link = document.createElement('a');
-    mp3Link.className = 'download-btn mp3';
-    mp3Link.href = mp3Path;
-    mp3Link.download = '';
-    mp3Link.textContent = '\u2193 Download MP3';
+    const mp3Btn = document.createElement('button');
+    mp3Btn.className = 'download-btn mp3';
+    mp3Btn.textContent = '\u2193 Download MP3';
 
     dlLinks.appendChild(m4aLink);
-    dlLinks.appendChild(mp3Link);
+    dlLinks.appendChild(mp3Btn);
     card.appendChild(dlLinks);
 
     // ── BOTTOM-LEFT: Date ──
@@ -183,8 +248,11 @@
     });
 
     // Prevent download clicks from toggling play
-    [m4aLink, mp3Link].forEach(link => {
-      link.addEventListener('click', e => e.stopPropagation());
+    m4aLink.addEventListener('click', e => e.stopPropagation());
+    mp3Btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const outName = song.filename.replace(/\.m4a$/i, '.mp3');
+      convertAndDownloadMp3(m4aPath, outName, mp3Btn);
     });
 
     // Sync progress bar with playback
