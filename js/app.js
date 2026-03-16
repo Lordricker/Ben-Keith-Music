@@ -54,7 +54,7 @@
     if (currentCard) {
       const btn = currentCard.querySelector('.play-pause-btn');
       const prog = currentCard.querySelector('.progress-input');
-      if (btn) { btn.textContent = '\u25B6'; btn.setAttribute('aria-label', 'Play'); }
+      if (btn) btn.textContent = '\u25B6';
       if (prog) prog.value = 0;
       currentCard.classList.remove('open', 'playing');
     }
@@ -71,12 +71,10 @@
       currentAudio = audioEl;
       audioEl.play().catch(() => {});
       playBtn.textContent = '\u23F8';
-      playBtn.setAttribute('aria-label', 'Pause');
     } else if (audioEl.paused) {
       // Card is open but paused: resume
       audioEl.play().catch(() => {});
       playBtn.textContent = '\u23F8';
-      playBtn.setAttribute('aria-label', 'Pause');
       card.classList.add('playing');
       currentCard = card;
       currentAudio = audioEl;
@@ -84,7 +82,6 @@
       // Card is open and playing: pause
       audioEl.pause();
       playBtn.textContent = '\u25B6';
-      playBtn.setAttribute('aria-label', 'Play');
       card.classList.remove('playing');
     }
   }
@@ -183,9 +180,9 @@
     const controls = document.createElement('div');
     controls.className = 'song-controls';
 
-    const playBtn = document.createElement('button');
+    const playBtn = document.createElement('span');
     playBtn.className = 'play-pause-btn';
-    playBtn.setAttribute('aria-label', 'Play');
+    playBtn.setAttribute('aria-hidden', 'true');
     playBtn.textContent = '\u25B6';
 
     const progressWrap = document.createElement('div');
@@ -219,8 +216,8 @@
     starBtn.textContent = favorites.has(song.filename) ? '\u2605' : '\u2606';
 
     titleWrap.appendChild(titleSpan);
-    titleWrap.appendChild(starBtn);
     card.appendChild(titleWrap);
+    card.appendChild(starBtn);
 
     starBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -266,7 +263,7 @@
 
     // Clicking the card background/title toggles play
     card.addEventListener('click', (e) => {
-      if (e.target.closest('a, .play-pause-btn, .progress-input, .star-btn')) return;
+      if (e.target.closest('a, .progress-input, .star-btn')) return;
       togglePlay(card, audioEl, playBtn, progressInput);
     });
 
@@ -276,12 +273,6 @@
         e.preventDefault();
         togglePlay(card, audioEl, playBtn, progressInput);
       }
-    });
-
-    // Dedicated play/pause button
-    playBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      togglePlay(card, audioEl, playBtn, progressInput);
     });
 
     // Seek via progress bar
@@ -310,7 +301,6 @@
     // Reset on song end
     audioEl.addEventListener('ended', () => {
       playBtn.textContent = '\u25B6';
-      playBtn.setAttribute('aria-label', 'Play');
       progressInput.value = 0;
       card.classList.remove('playing');
     });
@@ -339,7 +329,25 @@
     });
 
     sorted.forEach(song => container.appendChild(buildCard(song)));
+    setTimeout(checkScrollingTitles, 50);
   }
+
+  function checkScrollingTitles() {
+    document.querySelectorAll('.song-title-wrap').forEach(wrap => {
+      const title = wrap.querySelector('.song-title');
+      if (!title) return;
+      const overflow = title.scrollWidth - wrap.clientWidth;
+      if (overflow > 4) {
+        title.style.setProperty('--scroll-dist', `-${overflow}px`);
+        title.classList.add('scrolling');
+      } else {
+        title.classList.remove('scrolling');
+        title.style.removeProperty('--scroll-dist');
+      }
+    });
+  }
+
+  window.addEventListener('resize', checkScrollingTitles);
 
   document.querySelectorAll('[data-sort]').forEach(btn => {
     btn.addEventListener('click', () => {

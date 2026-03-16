@@ -115,12 +115,18 @@ body {
   height: clamp(90px, 11vw, 170px);
 }
 
+@media (max-width: 700px) {
+  .song-card.open {
+    height: 165px;
+  }
+}
+
 /* ── Player controls (top overlay) ── */
 .song-controls {
   position: absolute;
-  top: 10px;
-  left: 20%;
-  right: 20%;
+  top: 6px;
+  left: 5%;
+  right: 5%;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -136,25 +142,13 @@ body {
 
 .play-pause-btn {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: 2px solid #555;
-  background: rgba(0, 0, 0, 0.18);
-  color: #222;
-  font-size: 0.8rem;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
+  font-size: 0.85rem;
+  color: #333;
+  user-select: none;
+  pointer-events: none;
+  width: 14px;
+  text-align: center;
   line-height: 1;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.play-pause-btn:hover {
-  background: rgba(0, 0, 0, 0.32);
-  border-color: #222;
 }
 
 .progress-wrap {
@@ -173,12 +167,10 @@ body {
 .song-title-wrap {
   position: absolute;
   top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  max-width: calc(100% - 48px);
+  left: 5%;
+  right: 20%;
+  transform: translateY(-50%);
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -192,18 +184,31 @@ body {
   letter-spacing: 0.04em;
   user-select: none;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: block;
+}
+
+@keyframes title-scroll {
+  0%, 15%  { transform: translateX(0); }
+  75%, 90% { transform: translateX(var(--scroll-dist, 0px)); }
+  100%     { transform: translateX(0); }
+}
+
+.song-title.scrolling {
+  animation: title-scroll 8s ease-in-out infinite;
+  text-align: left;
 }
 
 .star-btn {
-  flex-shrink: 0;
+  position: absolute;
+  top: 50%;
+  right: 5%;
+  transform: translateY(-50%);
   background: none;
   border: none;
   font-size: clamp(2.7rem, 5.4vw, 4.2rem);
   color: #666;
   cursor: pointer;
-  padding: 0 2px;
+  padding: 0;
   line-height: 1;
   pointer-events: all;
   transition: color 0.15s, transform 0.1s;
@@ -222,9 +227,9 @@ body {
 /* ── Download buttons (bottom overlay) ── */
 .song-downloads {
   position: absolute;
-  left: 20%;
-  right: 20%;
-  bottom: 28px;
+  left: 5%;
+  right: 5%;
+  bottom: 20px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -242,8 +247,8 @@ body {
 /* ── Song date (bottom-left) ── */
 .song-date {
   position: absolute;
-  bottom: 10px;
-  left: 20%;
+  bottom: 6px;
+  left: 5%;
   font-size: 0.72rem;
   color: #fff;
   opacity: 0;
