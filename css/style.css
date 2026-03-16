@@ -102,15 +102,15 @@ body {
 }
 
 .song-card.open {
-  height: clamp(200px, 22vw, 260px);
+  height: clamp(90px, 11vw, 170px);
 }
 
 /* ── Player controls (top overlay) ── */
 .song-controls {
   position: absolute;
-  top: 14px;
-  left: 24px;
-  right: 24px;
+  top: 10px;
+  left: 20%;
+  right: 20%;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -183,9 +183,9 @@ body {
 /* ── Download buttons (bottom overlay) ── */
 .song-downloads {
   position: absolute;
-  left: 24px;
-  right: 24px;
-  bottom: 34px;
+  left: 20%;
+  right: 20%;
+  bottom: 28px;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -203,10 +203,10 @@ body {
 /* ── Song date (bottom-left) ── */
 .song-date {
   position: absolute;
-  bottom: 12px;
-  left: 24px;
+  bottom: 10px;
+  left: 20%;
   font-size: 0.72rem;
-  color: #555;
+  color: #fff;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s 0.1s;
@@ -220,7 +220,7 @@ body {
   display: inline-block;
   padding: 5px 14px;
   background: rgba(0, 0, 0, 0.12);
-  color: #333;
+  color: #fff;
   border: 1px solid #888;
   border-radius: 6px;
   text-decoration: none;
@@ -232,17 +232,17 @@ body {
 
 .download-btn:hover {
   background: rgba(0, 0, 0, 0.28);
-  color: #111;
+  color: #fff;
 }
 
 .download-btn.mp3 {
   border-color: #4a8e68;
-  color: #2a6048;
+  color: #fff;
 }
 
 .download-btn.mp3:hover {
   background: rgba(30, 90, 55, 0.15);
-  color: #1a4030;
+  color: #fff;
 }
 
 /* ── Email signup ── */
