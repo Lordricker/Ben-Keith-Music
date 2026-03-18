@@ -360,12 +360,35 @@
       card.classList.remove('playing', 'open');
       currentCard = null;
       currentAudio = null;
-      // Find the next card in the list and play it
+      // Find the next card and play its audio directly (avoids Chrome's gesture requirement)
       const cards = Array.from(document.querySelectorAll('.song-card'));
       const idx = cards.indexOf(card);
       if (idx !== -1 && idx + 1 < cards.length) {
         const nextCard = cards[idx + 1];
-        nextCard.click();
+        const nextAudio = nextCard.querySelector('audio');
+        const nextPlayBtn = nextCard.querySelector('.play-pause-btn');
+        const nextProgress = nextCard.querySelector('.progress-input');
+        if (nextAudio) {
+          stopCurrent();
+          nextCard.classList.add('open', 'playing');
+          currentCard = nextCard;
+          currentAudio = nextAudio;
+          nextAudio.play().catch(() => {});
+          if (nextPlayBtn) nextPlayBtn.textContent = '\u23F8';
+          // Get the song data for media session from the title
+          const titleEl = nextCard.querySelector('.song-title');
+          const titleText = titleEl ? titleEl.textContent : '';
+          if ('mediaSession' in navigator) {
+            navigator.mediaSession.metadata = new MediaMetadata({
+              title: titleText,
+              artist: 'Ben Keith',
+              album: 'Ben Keith Music',
+              artwork: [{ src: 'background.jpg', sizes: '512x512', type: 'image/jpeg' }]
+            });
+          }
+          setTimeout(() => checkScrollingTitles(), 50);
+          _ = nextProgress; // keep reference available
+        }
       }
     });
 
