@@ -27,8 +27,8 @@ body {
 /* ── Header ── */
 #site-header {
   position: relative;
-  width: calc(100% + 48px);
-  margin-left: -24px;
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
   margin-bottom: 36px;
   height: clamp(160px, 28vw, 340px);
   background-image: url('../background.jpg');
@@ -58,6 +58,9 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   text-shadow: 0 2px 12px rgba(0,0,0,0.7);
+  text-align: center;
+  width: 100%;
+  padding: 0 24px;
 }
 
 /* ── Sort controls ── */
