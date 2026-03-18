@@ -62,7 +62,60 @@
     currentAudio = null;
   }
 
-  function togglePlay(card, audioEl, playBtn, progressInput) {
+  function updateMediaSession(song) {
+    if (!('mediaSession' in navigator)) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: song.title,
+      artist: 'Ben Keith',
+      album: 'Ben Keith Music',
+      artwork: [
+        { src: 'background.jpg', sizes: '512x512', type: 'image/jpeg' }
+      ]
+    });
+
+    navigator.mediaSession.setActionHandler('play', () => {
+      if (currentAudio) currentAudio.play().catch(() => {});
+      if (currentCard) {
+        const btn = currentCard.querySelector('.play-pause-btn');
+        if (btn) btn.textContent = '\u23F8';
+        currentCard.classList.add('playing');
+      }
+    });
+
+    navigator.mediaSession.setActionHandler('pause', () => {
+      if (currentAudio) currentAudio.pause();
+      if (currentCard) {
+        const btn = currentCard.querySelector('.play-pause-btn');
+        if (btn) btn.textContent = '\u25B6';
+        currentCard.classList.remove('playing');
+      }
+    });
+
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+      if (!currentCard) return;
+      const cards = Array.from(document.querySelectorAll('.song-card'));
+      const idx = cards.indexOf(currentCard);
+      if (idx !== -1 && idx + 1 < cards.length) {
+        stopCurrent();
+        cards[idx + 1].click();
+      }
+    });
+
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+      if (!currentCard) return;
+      const cards = Array.from(document.querySelectorAll('.song-card'));
+      const idx = cards.indexOf(currentCard);
+      if (idx > 0) {
+        stopCurrent();
+        cards[idx - 1].click();
+      } else if (currentAudio) {
+        // At first song — restart it
+        currentAudio.currentTime = 0;
+      }
+    });
+  }
+
+  function togglePlay(card, audioEl, playBtn, progressInput, song) {
     if (!card.classList.contains('open')) {
       // Open card and start playing, stopping any other card first
       if (currentCard && currentCard !== card) stopCurrent();
@@ -71,6 +124,7 @@
       currentAudio = audioEl;
       audioEl.play().catch(() => {});
       playBtn.textContent = '\u23F8';
+      updateMediaSession(song);
     } else if (audioEl.paused) {
       // Card is open but paused: resume
       audioEl.play().catch(() => {});
@@ -78,6 +132,7 @@
       card.classList.add('playing');
       currentCard = card;
       currentAudio = audioEl;
+      updateMediaSession(song);
     } else {
       // Card is open and playing: pause
       audioEl.pause();
@@ -264,14 +319,14 @@
     // Clicking the card background/title toggles play
     card.addEventListener('click', (e) => {
       if (e.target.closest('a, .progress-input, .star-btn')) return;
-      togglePlay(card, audioEl, playBtn, progressInput);
+      togglePlay(card, audioEl, playBtn, progressInput, song);
     });
 
     // Keyboard: Enter or Space activates play
     card.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        togglePlay(card, audioEl, playBtn, progressInput);
+        togglePlay(card, audioEl, playBtn, progressInput, song);
       }
     });
 
