@@ -6,6 +6,47 @@
   let currentCard = null;
   let currentAudio = null;
   let favorites = new Set(JSON.parse(localStorage.getItem('bk-favorites') || '[]'));
+  const silenceCache = new Map(); // src -> seconds to skip
+
+  // ── Silent audio keepalive (prevents iOS from suspending JS between songs) ──
+  let _silentAudio = null;
+  let _silentUrl = null;
+  let _silentStopTimer = null;
+  const SILENT_IDLE_TIMEOUT = 7 * 60 * 1000; // stop after 7 min of no playback
+
+  function _createSilentBlob() {
+    // Generate a 1-second silent mono WAV at 8000 Hz entirely in JS (no file needed)
+    const sr = 8000, samples = sr;
+    const buf = new ArrayBuffer(44 + samples * 2);
+    const v = new DataView(buf);
+    const txt = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    txt(0, 'RIFF'); v.setUint32(4, 36 + samples * 2, true);
+    txt(8, 'WAVE'); txt(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true);
+    v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    txt(36, 'data'); v.setUint32(40, samples * 2, true);
+    // samples stay zero = silence
+    return new Blob([buf], { type: 'audio/wav' });
+  }
+
+  function startSilentAudio() {
+    clearTimeout(_silentStopTimer);
+    if (!_silentAudio) {
+      _silentUrl = URL.createObjectURL(_createSilentBlob());
+      _silentAudio = new Audio(_silentUrl);
+      _silentAudio.loop = true;
+      _silentAudio.volume = 0;
+    }
+    if (_silentAudio.paused) _silentAudio.play().catch(() => {});
+  }
+
+  function scheduleSilentAudioStop() {
+    clearTimeout(_silentStopTimer);
+    _silentStopTimer = setTimeout(() => {
+      if (_silentAudio) _silentAudio.pause();
+    }, SILENT_IDLE_TIMEOUT);
+  }
 
   function saveFavorites() {
     localStorage.setItem('bk-favorites', JSON.stringify([...favorites]));
@@ -60,6 +101,7 @@
     }
     currentCard = null;
     currentAudio = null;
+    scheduleSilentAudioStop();
   }
 
   function updateMediaSession(song) {
@@ -115,6 +157,42 @@
     });
   }
 
+  // Fetch + decode audio, find first non-silent sample.
+  // Returns seconds to skip (0 if silence < minSilence).
+  async function findSkipTime(audioEl, minSilence = 1.0, threshold = 0.01) {
+    const src = audioEl.querySelector('source')?.src || '';
+    if (!src) return 0;
+    if (silenceCache.has(src)) return silenceCache.get(src);
+    try {
+      const response = await fetch(src);
+      if (!response.ok) throw new Error('fetch failed');
+      const arrayBuffer = await response.arrayBuffer();
+      const audioCtx = new AudioContext();
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+      audioCtx.close();
+      const sampleRate = audioBuffer.sampleRate;
+      const numChannels = audioBuffer.numberOfChannels;
+      // Only scan the first 10 seconds
+      const maxScan = Math.min(audioBuffer.length, Math.ceil(sampleRate * 10));
+      const minSamples = Math.floor(minSilence * sampleRate);
+      const channelData = Array.from({ length: numChannels }, (_, c) => audioBuffer.getChannelData(c));
+      let firstNonSilent = -1;
+      for (let i = 0; i < maxScan && firstNonSilent === -1; i++) {
+        for (let c = 0; c < numChannels; c++) {
+          if (Math.abs(channelData[c][i]) > threshold) { firstNonSilent = i; break; }
+        }
+      }
+      const skipTime = firstNonSilent > minSamples
+        ? Math.max(0, firstNonSilent / sampleRate - 0.05)
+        : 0;
+      silenceCache.set(src, skipTime);
+      return skipTime;
+    } catch {
+      silenceCache.set(src, 0);
+      return 0;
+    }
+  }
+
   function togglePlay(card, audioEl, playBtn, progressInput, song) {
     if (!card.classList.contains('open')) {
       // Open card and start playing, stopping any other card first
@@ -123,11 +201,17 @@
       currentCard = card;
       currentAudio = audioEl;
       audioEl.play().catch(() => {});
+      startSilentAudio();
       playBtn.textContent = '\u23F8';
       updateMediaSession(song);
+      findSkipTime(audioEl).then(t => {
+        if (t > 0 && currentAudio === audioEl && audioEl.currentTime < t + 0.5)
+          audioEl.currentTime = t;
+      });
     } else if (audioEl.paused) {
       // Card is open but paused: resume
       audioEl.play().catch(() => {});
+      startSilentAudio();
       playBtn.textContent = '\u23F8';
       card.classList.add('playing');
       currentCard = card;
@@ -136,6 +220,7 @@
     } else {
       // Card is open and playing: pause
       audioEl.pause();
+      scheduleSilentAudioStop();
       playBtn.textContent = '\u25B6';
       card.classList.remove('playing');
     }
@@ -374,6 +459,11 @@
           currentCard = nextCard;
           currentAudio = nextAudio;
           nextAudio.play().catch(() => {});
+          startSilentAudio(); // keep iOS audio session alive across song boundary
+          findSkipTime(nextAudio).then(t => {
+            if (t > 0 && currentAudio === nextAudio && nextAudio.currentTime < t + 0.5)
+              nextAudio.currentTime = t;
+          });
           if (nextPlayBtn) nextPlayBtn.textContent = '\u23F8';
           // Get the song data for media session from the title
           const titleEl = nextCard.querySelector('.song-title');
