@@ -7,6 +7,9 @@
   let currentAudio = null;
   let favorites = new Set(JSON.parse(localStorage.getItem('bk-favorites') || '[]'));
   const silenceCache = new Map(); // src -> seconds to skip
+  // Single shared <audio> element — stays trusted by the browser after the first
+  // user gesture, so chained autoplay works indefinitely without new gestures.
+  const playerAudio = new Audio();
 
   // ── Silent audio keepalive (prevents iOS from suspending JS between songs) ──
   let _silentAudio = null;
@@ -88,10 +91,8 @@
   }
 
   function stopCurrent() {
-    if (currentAudio) {
-      currentAudio.pause();
-      currentAudio.currentTime = 0;
-    }
+    playerAudio.pause();
+    playerAudio.currentTime = 0;
     if (currentCard) {
       const btn = currentCard.querySelector('.play-pause-btn');
       const prog = currentCard.querySelector('.progress-input');
@@ -159,8 +160,7 @@
 
   // Fetch + decode audio, find first non-silent sample.
   // Returns seconds to skip (0 if silence < minSilence).
-  async function findSkipTime(audioEl, minSilence = 1.0, threshold = 0.01) {
-    const src = audioEl.querySelector('source')?.src || '';
+  async function findSkipTime(src, minSilence = 1.0, threshold = 0.01) {
     if (!src) return 0;
     if (silenceCache.has(src)) return silenceCache.get(src);
     try {
@@ -193,33 +193,35 @@
     }
   }
 
-  function togglePlay(card, audioEl, playBtn, progressInput, song) {
+  function togglePlay(card, playBtn, progressInput, song, m4aSrc) {
     if (!card.classList.contains('open')) {
       // Open card and start playing, stopping any other card first
       if (currentCard && currentCard !== card) stopCurrent();
       card.classList.add('open', 'playing');
       currentCard = card;
-      currentAudio = audioEl;
-      audioEl.play().catch(() => {});
+      currentAudio = playerAudio;
+      playerAudio.src = m4aSrc;
+      playerAudio.load();
+      playerAudio.play().catch(() => {});
       startSilentAudio();
       playBtn.textContent = '\u23F8';
       updateMediaSession(song);
-      findSkipTime(audioEl).then(t => {
-        if (t > 0 && currentAudio === audioEl && audioEl.currentTime < t + 0.5)
-          audioEl.currentTime = t;
+      findSkipTime(m4aSrc).then(t => {
+        if (t > 0 && currentCard === card && playerAudio.currentTime < t + 0.5)
+          playerAudio.currentTime = t;
       });
-    } else if (audioEl.paused) {
+    } else if (playerAudio.paused) {
       // Card is open but paused: resume
-      audioEl.play().catch(() => {});
+      playerAudio.play().catch(() => {});
       startSilentAudio();
       playBtn.textContent = '\u23F8';
       card.classList.add('playing');
       currentCard = card;
-      currentAudio = audioEl;
+      currentAudio = playerAudio;
       updateMediaSession(song);
     } else {
       // Card is open and playing: pause
-      audioEl.pause();
+      playerAudio.pause();
       scheduleSilentAudioStop();
       playBtn.textContent = '\u25B6';
       card.classList.remove('playing');
@@ -293,6 +295,60 @@
     }
   }
 
+  // ── Global playerAudio event handlers (one element shared across all songs) ──
+  playerAudio.addEventListener('timeupdate', () => {
+    if (!currentCard || !playerAudio.duration) return;
+    const prog = currentCard.querySelector('.progress-input');
+    if (prog) prog.value = (playerAudio.currentTime / playerAudio.duration) * 100;
+  });
+
+  playerAudio.addEventListener('ended', () => {
+    if (!currentCard) return;
+    const endedCard = currentCard;
+    const endedBtn = endedCard.querySelector('.play-pause-btn');
+    const endedProg = endedCard.querySelector('.progress-input');
+    if (endedBtn) endedBtn.textContent = '\u25B6';
+    if (endedProg) endedProg.value = 0;
+    endedCard.classList.remove('playing', 'open');
+    currentCard = null;
+    currentAudio = null;
+
+    const cards = Array.from(document.querySelectorAll('.song-card'));
+    const idx = cards.indexOf(endedCard);
+    if (idx !== -1 && idx + 1 < cards.length) {
+      const nextCard = cards[idx + 1];
+      const nextSrc = nextCard.dataset.src;
+      const nextPlayBtn = nextCard.querySelector('.play-pause-btn');
+      if (nextSrc) {
+        nextCard.classList.add('open', 'playing');
+        currentCard = nextCard;
+        currentAudio = playerAudio;
+        playerAudio.src = nextSrc; // reuse same trusted element — no gesture needed
+        playerAudio.load();
+        playerAudio.play().catch(() => {});
+        startSilentAudio();
+        findSkipTime(nextSrc).then(t => {
+          if (t > 0 && currentCard === nextCard && playerAudio.currentTime < t + 0.5)
+            playerAudio.currentTime = t;
+        });
+        if (nextPlayBtn) nextPlayBtn.textContent = '\u23F8';
+        const titleEl = nextCard.querySelector('.song-title');
+        const titleText = titleEl ? titleEl.textContent : '';
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = new MediaMetadata({
+            title: titleText,
+            artist: 'Ben Keith',
+            album: 'Ben Keith Music',
+            artwork: [{ src: 'background.jpg', sizes: '512x512', type: 'image/jpeg' }]
+          });
+        }
+        setTimeout(() => checkScrollingTitles(), 50);
+      }
+    } else {
+      scheduleSilentAudioStop();
+    }
+  });
+
   function buildCard(song) {
     const card = document.createElement('div');
     card.className = 'song-card';
@@ -306,15 +362,7 @@
     const encodedMp3 = mp3Filename.split('/').map(encodeURIComponent).join('/');
     const m4aPath = 'music/' + encodedFilename;
     const mp3Path = 'music/mp3/' + encodedMp3;
-
-    // Hidden audio element (no native controls = no "more options" button)
-    const audioEl = document.createElement('audio');
-    audioEl.preload = 'none';
-    const source = document.createElement('source');
-    source.src = m4aPath;
-    source.type = 'audio/mp4';
-    audioEl.appendChild(source);
-    card.appendChild(audioEl);
+    card.dataset.src = m4aPath;
 
     // ── TOP: Player controls ──
     const controls = document.createElement('div');
@@ -404,22 +452,22 @@
     // Clicking the card background/title toggles play
     card.addEventListener('click', (e) => {
       if (e.target.closest('a, .progress-input, .star-btn')) return;
-      togglePlay(card, audioEl, playBtn, progressInput, song);
+      togglePlay(card, playBtn, progressInput, song, m4aPath);
     });
 
     // Keyboard: Enter or Space activates play
     card.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        togglePlay(card, audioEl, playBtn, progressInput, song);
+        togglePlay(card, playBtn, progressInput, song, m4aPath);
       }
     });
 
     // Seek via progress bar
     progressInput.addEventListener('input', (e) => {
       e.stopPropagation();
-      if (audioEl.duration) {
-        audioEl.currentTime = (progressInput.value / 100) * audioEl.duration;
+      if (currentCard === card && playerAudio.duration) {
+        playerAudio.currentTime = (progressInput.value / 100) * playerAudio.duration;
       }
     });
 
@@ -431,65 +479,13 @@
       convertAndDownloadMp3(m4aPath, outName, mp3Btn);
     });
 
-    // Sync progress bar with playback
-    audioEl.addEventListener('timeupdate', () => {
-      if (audioEl.duration) {
-        progressInput.value = (audioEl.currentTime / audioEl.duration) * 100;
-      }
-    });
-
-    // Reset on song end — autoplay next
-    audioEl.addEventListener('ended', () => {
-      playBtn.textContent = '\u25B6';
-      progressInput.value = 0;
-      card.classList.remove('playing', 'open');
-      currentCard = null;
-      currentAudio = null;
-      // Find the next card and play its audio directly (avoids Chrome's gesture requirement)
-      const cards = Array.from(document.querySelectorAll('.song-card'));
-      const idx = cards.indexOf(card);
-      if (idx !== -1 && idx + 1 < cards.length) {
-        const nextCard = cards[idx + 1];
-        const nextAudio = nextCard.querySelector('audio');
-        const nextPlayBtn = nextCard.querySelector('.play-pause-btn');
-        const nextProgress = nextCard.querySelector('.progress-input');
-        if (nextAudio) {
-          stopCurrent();
-          nextCard.classList.add('open', 'playing');
-          currentCard = nextCard;
-          currentAudio = nextAudio;
-          nextAudio.play().catch(() => {});
-          startSilentAudio(); // keep iOS audio session alive across song boundary
-          findSkipTime(nextAudio).then(t => {
-            if (t > 0 && currentAudio === nextAudio && nextAudio.currentTime < t + 0.5)
-              nextAudio.currentTime = t;
-          });
-          if (nextPlayBtn) nextPlayBtn.textContent = '\u23F8';
-          // Get the song data for media session from the title
-          const titleEl = nextCard.querySelector('.song-title');
-          const titleText = titleEl ? titleEl.textContent : '';
-          if ('mediaSession' in navigator) {
-            navigator.mediaSession.metadata = new MediaMetadata({
-              title: titleText,
-              artist: 'Ben Keith',
-              album: 'Ben Keith Music',
-              artwork: [{ src: 'background.jpg', sizes: '512x512', type: 'image/jpeg' }]
-            });
-          }
-          setTimeout(() => checkScrollingTitles(), 50);
-          _ = nextProgress; // keep reference available
-        }
-      }
-    });
-
     return card;
   }
 
   function renderSongs() {
+    stopCurrent();
     const container = document.getElementById('song-list');
     container.innerHTML = '';
-    currentCard = null;
-    currentAudio = null;
 
     const pool = activeCategories.has('all')
       ? songs
