@@ -7,49 +7,30 @@
   let currentAudio = null;
   let favorites = new Set(JSON.parse(localStorage.getItem('bk-favorites') || '[]'));
   const silenceCache = new Map(); // src -> seconds to skip
-  // Single shared <audio> element — stays trusted by the browser after the first
-  // user gesture, so chained autoplay works indefinitely without new gestures.
-  const playerAudio = new Audio();
 
-  // ── Silent audio keepalive (prevents iOS from suspending JS between songs) ──
-  let _silentAudio = null;
-  let _silentUrl = null;
-  let _silentStopTimer = null;
-  const SILENT_IDLE_TIMEOUT = 7 * 60 * 1000; // stop after 7 min of no playback
+  // ── Ping-pong dual audio engine ──────────────────────────────────────────────
+  // Slot A plays the current song at full volume.
+  // Slot B plays the NEXT song at near-zero volume starting ~2s before A ends.
+  // When A fires 'ended', B is already playing — we just raise B's volume to 1.
+  // NO play() call is made in the background, so Android cannot block it.
+  // Both slots are started during the original user tap, keeping them trusted.
+  const audioSlots  = [new Audio(), new Audio()];
+  let activeSlot    = 0;     // which slot is audibly playing
+  let songQueue     = [];    // [{src, card}] built when user taps a song
+  let queuePos      = 0;     // current position in songQueue
+  let bufferArmed   = false; // true once buffer slot has started the next song
 
-  function _createSilentBlob() {
-    // Generate a 1-second silent mono WAV at 8000 Hz entirely in JS (no file needed)
-    const sr = 8000, samples = sr;
-    const buf = new ArrayBuffer(44 + samples * 2);
-    const v = new DataView(buf);
-    const txt = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
-    txt(0, 'RIFF'); v.setUint32(4, 36 + samples * 2, true);
-    txt(8, 'WAVE'); txt(12, 'fmt ');
-    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-    v.setUint32(24, sr, true); v.setUint32(28, sr * 2, true);
-    v.setUint16(32, 2, true); v.setUint16(34, 16, true);
-    txt(36, 'data'); v.setUint32(40, samples * 2, true);
-    // samples stay zero = silence
-    return new Blob([buf], { type: 'audio/wav' });
-  }
-
-  function startSilentAudio() {
-    clearTimeout(_silentStopTimer);
-    if (!_silentAudio) {
-      _silentUrl = URL.createObjectURL(_createSilentBlob());
-      _silentAudio = new Audio(_silentUrl);
-      _silentAudio.loop = true;
-      _silentAudio.volume = 0;
-    }
-    if (_silentAudio.paused) _silentAudio.play().catch(() => {});
-  }
-
-  function scheduleSilentAudioStop() {
-    clearTimeout(_silentStopTimer);
-    _silentStopTimer = setTimeout(() => {
-      if (_silentAudio) _silentAudio.pause();
-    }, SILENT_IDLE_TIMEOUT);
-  }
+  // Tiny silent WAV blob URL — keeps buffer slot pre-activated between songs
+  const _silentWav = (() => {
+    const sr = 8000, n = sr, b = new ArrayBuffer(44 + n * 2), dv = new DataView(b);
+    const w = (o, s) => [...s].forEach((c, i) => dv.setUint8(o + i, c.charCodeAt(0)));
+    w(0,'RIFF'); dv.setUint32(4,36+n*2,true); w(8,'WAVE'); w(12,'fmt ');
+    dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true);
+    dv.setUint32(24,sr,true); dv.setUint32(28,sr*2,true);
+    dv.setUint16(32,2,true); dv.setUint16(34,16,true);
+    w(36,'data'); dv.setUint32(40,n*2,true);
+    return URL.createObjectURL(new Blob([b], { type: 'audio/wav' }));
+  })();
 
   function saveFavorites() {
     localStorage.setItem('bk-favorites', JSON.stringify([...favorites]));
@@ -91,8 +72,11 @@
   }
 
   function stopCurrent() {
-    playerAudio.pause();
-    playerAudio.currentTime = 0;
+    audioSlots[0].pause();
+    audioSlots[1].pause();
+    songQueue = [];
+    queuePos = 0;
+    bufferArmed = false;
     if (currentCard) {
       const btn = currentCard.querySelector('.play-pause-btn');
       const prog = currentCard.querySelector('.progress-input');
@@ -103,7 +87,6 @@
     currentCard = null;
     currentAudio = null;
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
-    scheduleSilentAudioStop();
   }
 
   function updateMediaSession(song) {
@@ -137,28 +120,57 @@
       }
     });
 
-    navigator.mediaSession.setActionHandler('nexttrack', () => {
-      if (!currentCard) return;
-      const cards = Array.from(document.querySelectorAll('.song-card'));
-      const idx = cards.indexOf(currentCard);
-      if (idx !== -1 && idx + 1 < cards.length) {
-        stopCurrent();
-        cards[idx + 1].click();
-      }
-    });
-
+    navigator.mediaSession.setActionHandler('nexttrack', () => { advanceQueue(1); });
     navigator.mediaSession.setActionHandler('previoustrack', () => {
-      if (!currentCard) return;
-      const cards = Array.from(document.querySelectorAll('.song-card'));
-      const idx = cards.indexOf(currentCard);
-      if (idx > 0) {
-        stopCurrent();
-        cards[idx - 1].click();
-      } else if (currentAudio) {
-        // At first song — restart it
-        currentAudio.currentTime = 0;
-      }
+      const el = audioSlots[activeSlot];
+      if (el.currentTime > 3) { el.currentTime = 0; } else { advanceQueue(-1); }
     });
+  }
+
+  // Skip to a different queue position (used by lock-screen prev/next buttons)
+  function advanceQueue(delta) {
+    const newPos = queuePos + delta;
+    if (newPos < 0 || newPos >= songQueue.length) return;
+    // Stop buffer slot, reset flag
+    audioSlots[1 - activeSlot].pause();
+    bufferArmed = false;
+    queuePos = newPos;
+    // Close old card
+    if (currentCard) {
+      const b = currentCard.querySelector('.play-pause-btn');
+      const p = currentCard.querySelector('.progress-input');
+      if (b) b.textContent = '\u25B6';
+      if (p) p.value = 0;
+      currentCard.classList.remove('open', 'playing');
+    }
+    // Start new song on active slot (Media Session callbacks are trusted)
+    const { src, card } = songQueue[queuePos];
+    audioSlots[activeSlot].src = src;
+    audioSlots[activeSlot].play().catch(() => {});
+    card.classList.add('open', 'playing');
+    const btn = card.querySelector('.play-pause-btn');
+    if (btn) btn.textContent = '\u23F8';
+    currentCard = card;
+    currentAudio = audioSlots[activeSlot];
+    // Re-prime buffer slot with silent wav
+    audioSlots[1 - activeSlot].src = _silentWav;
+    audioSlots[1 - activeSlot].loop = true;
+    audioSlots[1 - activeSlot].volume = 0.001;
+    audioSlots[1 - activeSlot].play().catch(() => {});
+    if ('mediaSession' in navigator) {
+      const titleEl = card.querySelector('.song-title');
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: titleEl ? titleEl.textContent : '',
+        artist: 'Ben Keith', album: 'Ben Keith Music',
+        artwork: [{ src: 'background.jpg', sizes: '512x512', type: 'image/jpeg' }]
+      });
+      navigator.mediaSession.playbackState = 'playing';
+    }
+    findSkipTime(src).then(t => {
+      if (t > 0 && currentCard === card && audioSlots[activeSlot].currentTime < t + 0.5)
+        audioSlots[activeSlot].currentTime = t;
+    });
+    setTimeout(() => checkScrollingTitles(), 50);
   }
 
   // Fetch + decode audio, find first non-silent sample.
@@ -198,35 +210,54 @@
 
   function togglePlay(card, playBtn, progressInput, song, m4aSrc) {
     if (!card.classList.contains('open')) {
-      // Open card and start playing, stopping any other card first
-      if (currentCard && currentCard !== card) stopCurrent();
+      // New song tapped — build queue from this card onward
+      stopCurrent();
+      const allCards = Array.from(document.querySelectorAll('.song-card'));
+      songQueue = allCards.slice(allCards.indexOf(card)).map(c => ({ src: c.dataset.src, card: c }));
+      queuePos = 0;
+      activeSlot = 0;
+      bufferArmed = false;
+
+      // Start active slot — this is the user gesture, granting trust to both slots
+      audioSlots[0].src = m4aSrc;
+      audioSlots[0].volume = 1;
+      audioSlots[0].play().catch(() => {});
+
+      // Pre-activate buffer slot with silent wav within the same user gesture
+      audioSlots[1].src = _silentWav;
+      audioSlots[1].loop = true;
+      audioSlots[1].volume = 0.001;
+      audioSlots[1].play().catch(() => {});
+
       card.classList.add('open', 'playing');
       currentCard = card;
-      currentAudio = playerAudio;
-      playerAudio.src = m4aSrc;
-      playerAudio.play().catch(() => {});
-      startSilentAudio();
+      currentAudio = audioSlots[0];
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
       playBtn.textContent = '\u23F8';
       updateMediaSession(song);
       findSkipTime(m4aSrc).then(t => {
-        if (t > 0 && currentCard === card && playerAudio.currentTime < t + 0.5)
-          playerAudio.currentTime = t;
+        if (t > 0 && currentCard === card && audioSlots[0].currentTime < t + 0.5)
+          audioSlots[0].currentTime = t;
       });
-    } else if (playerAudio.paused) {
-      // Card is open but paused: resume
-      playerAudio.play().catch(() => {});
-      startSilentAudio();
+    } else if (audioSlots[activeSlot].paused) {
+      // Resume — restore both slots (user is on screen, play() is fine here)
+      audioSlots[activeSlot].play().catch(() => {});
+      audioSlots[1 - activeSlot].src = _silentWav;
+      audioSlots[1 - activeSlot].loop = true;
+      audioSlots[1 - activeSlot].volume = 0.001;
+      audioSlots[1 - activeSlot].play().catch(() => {});
+      bufferArmed = false;
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
       playBtn.textContent = '\u23F8';
       card.classList.add('playing');
       currentCard = card;
-      currentAudio = playerAudio;
+      currentAudio = audioSlots[activeSlot];
       updateMediaSession(song);
     } else {
-      // Card is open and playing: pause
-      playerAudio.pause();
-      scheduleSilentAudioStop();
+      // Pause both slots
+      audioSlots[activeSlot].pause();
+      audioSlots[1 - activeSlot].pause();
+      bufferArmed = false;
       if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       playBtn.textContent = '\u25B6';
       card.classList.remove('playing');
@@ -300,59 +331,109 @@
     }
   }
 
-  // ── Global playerAudio event handlers (one element shared across all songs) ──
-  playerAudio.addEventListener('timeupdate', () => {
-    if (!currentCard || !playerAudio.duration) return;
+  // ── Dual-slot event handlers ─────────────────────────────────────────────────
+  function handleTimeUpdate(slot) {
+    if (slot !== activeSlot) return;
+    const el = audioSlots[slot];
+    if (!currentCard || !el.duration) return;
+    // Update progress bar
     const prog = currentCard.querySelector('.progress-input');
-    if (prog) prog.value = (playerAudio.currentTime / playerAudio.duration) * 100;
-  });
-
-  playerAudio.addEventListener('ended', () => {
-    if (!currentCard) return;
-    const endedCard = currentCard;
-    const endedBtn = endedCard.querySelector('.play-pause-btn');
-    const endedProg = endedCard.querySelector('.progress-input');
-    if (endedBtn) endedBtn.textContent = '\u25B6';
-    if (endedProg) endedProg.value = 0;
-    endedCard.classList.remove('playing', 'open');
-    currentCard = null;
-    currentAudio = null;
-
-    const cards = Array.from(document.querySelectorAll('.song-card'));
-    const idx = cards.indexOf(endedCard);
-    if (idx !== -1 && idx + 1 < cards.length) {
-      const nextCard = cards[idx + 1];
-      const nextSrc = nextCard.dataset.src;
-      const nextPlayBtn = nextCard.querySelector('.play-pause-btn');
-      if (nextSrc) {
-        nextCard.classList.add('open', 'playing');
-        currentCard = nextCard;
-        currentAudio = playerAudio;
-        playerAudio.src = nextSrc; // reuse same trusted element — no gesture needed
-        playerAudio.play().catch(() => {});
-        startSilentAudio();
-        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
-        findSkipTime(nextSrc).then(t => {
-          if (t > 0 && currentCard === nextCard && playerAudio.currentTime < t + 0.5)
-            playerAudio.currentTime = t;
-        });
-        if (nextPlayBtn) nextPlayBtn.textContent = '\u23F8';
-        const titleEl = nextCard.querySelector('.song-title');
-        const titleText = titleEl ? titleEl.textContent : '';
-        if ('mediaSession' in navigator) {
-          navigator.mediaSession.metadata = new MediaMetadata({
-            title: titleText,
-            artist: 'Ben Keith',
-            album: 'Ben Keith Music',
-            artwork: [{ src: 'background.jpg', sizes: '512x512', type: 'image/jpeg' }]
-          });
-        }
-        setTimeout(() => checkScrollingTitles(), 50);
+    if (prog) prog.value = (el.currentTime / el.duration) * 100;
+    // Arm buffer slot when within 2s of the end
+    if (!bufferArmed && queuePos + 1 < songQueue.length) {
+      if (el.duration - el.currentTime < 2.0) {
+        const bufSlot = 1 - activeSlot;
+        const nextSrc = songQueue[queuePos + 1].src;
+        // Switch buffer slot from silent wav to next song (still playing, just new src)
+        // play() here is safe: active audio session is alive (slot A still playing)
+        audioSlots[bufSlot].loop = false;
+        audioSlots[bufSlot].src = nextSrc;
+        audioSlots[bufSlot].volume = 0.001;
+        audioSlots[bufSlot].play().catch(() => {});
+        bufferArmed = true;
       }
-    } else {
-      scheduleSilentAudioStop();
     }
-  });
+  }
+
+  function handleEnded(slot) {
+    if (slot !== activeSlot) return;
+    // Close the card that just finished
+    if (currentCard) {
+      const btn = currentCard.querySelector('.play-pause-btn');
+      const prog = currentCard.querySelector('.progress-input');
+      if (btn) btn.textContent = '\u25B6';
+      if (prog) prog.value = 0;
+      currentCard.classList.remove('playing', 'open');
+    }
+
+    queuePos++;
+    if (queuePos >= songQueue.length) {
+      audioSlots[1 - slot].pause();
+      currentCard = null;
+      currentAudio = null;
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
+      return;
+    }
+
+    const nextItem = songQueue[queuePos];
+    const bufSlot  = 1 - activeSlot;
+
+    if (bufferArmed) {
+      // ── THE KEY: buffer slot is already playing next song at 0.001 volume ──
+      // Just seek to beginning and raise volume. NO play() call. Cannot be blocked.
+      audioSlots[bufSlot].currentTime = 0;
+      audioSlots[bufSlot].volume = 1;
+    } else {
+      // Very short song — buffer wasn't armed in time; must call play() as fallback
+      audioSlots[bufSlot].loop = false;
+      audioSlots[bufSlot].src = nextItem.src;
+      audioSlots[bufSlot].volume = 1;
+      audioSlots[bufSlot].play().catch(() => {});
+    }
+
+    // Swap: buffer is now active
+    activeSlot  = bufSlot;
+    bufferArmed = false;
+
+    // Open the new card
+    nextItem.card.classList.add('open', 'playing');
+    const nextBtn = nextItem.card.querySelector('.play-pause-btn');
+    if (nextBtn) nextBtn.textContent = '\u23F8';
+    currentCard  = nextItem.card;
+    currentAudio = audioSlots[activeSlot];
+
+    // Re-prime the (now freed) old slot with silent wav so it's ready to be used as buffer
+    // play() is safe here because activeSlot is now producing audio
+    const newBufSlot = 1 - activeSlot;
+    audioSlots[newBufSlot].src  = _silentWav;
+    audioSlots[newBufSlot].loop = true;
+    audioSlots[newBufSlot].volume = 0.001;
+    audioSlots[newBufSlot].play().catch(() => {});
+
+    // Media session
+    const titleEl = nextItem.card.querySelector('.song-title');
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: titleEl ? titleEl.textContent : '',
+        artist: 'Ben Keith', album: 'Ben Keith Music',
+        artwork: [{ src: 'background.jpg', sizes: '512x512', type: 'image/jpeg' }]
+      });
+      navigator.mediaSession.playbackState = 'playing';
+    }
+
+    // Skip silence if applicable
+    findSkipTime(nextItem.src).then(t => {
+      if (t > 0 && currentCard === nextItem.card && audioSlots[activeSlot].currentTime < t + 0.5)
+        audioSlots[activeSlot].currentTime = t;
+    });
+
+    setTimeout(() => checkScrollingTitles(), 50);
+  }
+
+  audioSlots[0].addEventListener('timeupdate', () => handleTimeUpdate(0));
+  audioSlots[1].addEventListener('timeupdate', () => handleTimeUpdate(1));
+  audioSlots[0].addEventListener('ended', () => handleEnded(0));
+  audioSlots[1].addEventListener('ended', () => handleEnded(1));
 
   function buildCard(song) {
     const card = document.createElement('div');
@@ -471,8 +552,8 @@
     // Seek via progress bar
     progressInput.addEventListener('input', (e) => {
       e.stopPropagation();
-      if (currentCard === card && playerAudio.duration) {
-        playerAudio.currentTime = (progressInput.value / 100) * playerAudio.duration;
+      if (currentCard === card && audioSlots[activeSlot].duration) {
+        audioSlots[activeSlot].currentTime = (progressInput.value / 100) * audioSlots[activeSlot].duration;
       }
     });
 
