@@ -25,11 +25,19 @@ body {
 }
 
 /* ── Header ── */
+#version-bar {
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
+  height: 4px;
+  background: #e05c00;
+  margin-bottom: 32px;
+}
+
 #site-header {
   position: relative;
   width: 100vw;
   margin-left: calc(-50vw + 50%);
-  margin-bottom: 36px;
+  margin-bottom: 0;
   height: clamp(160px, 28vw, 340px);
   background-image: url('../background.jpg');
   background-size: cover;

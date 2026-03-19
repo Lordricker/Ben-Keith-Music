@@ -102,6 +102,7 @@
     }
     currentCard = null;
     currentAudio = null;
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
     scheduleSilentAudioStop();
   }
 
@@ -118,6 +119,7 @@
 
     navigator.mediaSession.setActionHandler('play', () => {
       if (currentAudio) currentAudio.play().catch(() => {});
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
       if (currentCard) {
         const btn = currentCard.querySelector('.play-pause-btn');
         if (btn) btn.textContent = '\u23F8';
@@ -127,6 +129,7 @@
 
     navigator.mediaSession.setActionHandler('pause', () => {
       if (currentAudio) currentAudio.pause();
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       if (currentCard) {
         const btn = currentCard.querySelector('.play-pause-btn');
         if (btn) btn.textContent = '\u25B6';
@@ -201,9 +204,9 @@
       currentCard = card;
       currentAudio = playerAudio;
       playerAudio.src = m4aSrc;
-      playerAudio.load();
       playerAudio.play().catch(() => {});
       startSilentAudio();
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
       playBtn.textContent = '\u23F8';
       updateMediaSession(song);
       findSkipTime(m4aSrc).then(t => {
@@ -214,6 +217,7 @@
       // Card is open but paused: resume
       playerAudio.play().catch(() => {});
       startSilentAudio();
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
       playBtn.textContent = '\u23F8';
       card.classList.add('playing');
       currentCard = card;
@@ -223,6 +227,7 @@
       // Card is open and playing: pause
       playerAudio.pause();
       scheduleSilentAudioStop();
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
       playBtn.textContent = '\u25B6';
       card.classList.remove('playing');
     }
@@ -324,9 +329,9 @@
         currentCard = nextCard;
         currentAudio = playerAudio;
         playerAudio.src = nextSrc; // reuse same trusted element — no gesture needed
-        playerAudio.load();
         playerAudio.play().catch(() => {});
         startSilentAudio();
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
         findSkipTime(nextSrc).then(t => {
           if (t > 0 && currentCard === nextCard && playerAudio.currentTime < t + 0.5)
             playerAudio.currentTime = t;
