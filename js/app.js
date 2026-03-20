@@ -590,6 +590,12 @@
           });
 
     const sorted = [...pool].sort((a, b) => {
+      if (sortKey === 'date') {
+        const [ay, am, ad] = (a.date || '0000-00-00').split('-').map(Number);
+        const [by, bm, bd] = (b.date || '0000-00-00').split('-').map(Number);
+        const diff = ay !== by ? ay - by : am !== bm ? am - bm : ad - bd;
+        return sortAsc ? diff : -diff;
+      }
       const va = (a[sortKey] || '').toLowerCase();
       const vb = (b[sortKey] || '').toLowerCase();
       if (va < vb) return sortAsc ? -1 : 1;
