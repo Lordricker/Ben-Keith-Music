@@ -73,7 +73,9 @@
 
   function stopCurrent() {
     audioSlots[0].pause();
+    audioSlots[0].loop = false;
     audioSlots[1].pause();
+    audioSlots[1].loop = false;
     songQueue = [];
     queuePos = 0;
     bufferArmed = false;
@@ -219,6 +221,7 @@
       bufferArmed = false;
 
       // Start active slot — this is the user gesture, granting trust to both slots
+      audioSlots[0].loop = false;
       audioSlots[0].src = m4aSrc;
       audioSlots[0].volume = 1;
       audioSlots[0].play().catch(() => {});
@@ -506,7 +509,7 @@
       }
       saveFavorites();
       // If currently viewing favorites, re-render to remove un-favorited song
-      if (activeCategory === 'favorites') renderSongs();
+      if (activeCategories.has('favorites')) renderSongs();
     });
 
     // ── BOTTOM: Downloads ──
