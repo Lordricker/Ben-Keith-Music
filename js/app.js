@@ -1,7 +1,7 @@
 (async function () {
   let songs = [];
-  let sortKey = 'title';
-  let sortAsc = true;
+  let sortKey = 'date';
+  let sortAsc = false;
   let activeCategories = new Set(['all']);
   let currentCard = null;
   let currentAudio = null;
